@@ -9,7 +9,6 @@ exports.loginHelper = function(data)
 		<body>
 			<script type='text/javascript'>
 				let data = ${JSON.stringify(data)};
-	
 				window.opener.CLIENT.receiveLoginChildWindow(data);
 	
 				window.close();
