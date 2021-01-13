@@ -4,8 +4,8 @@ const mediasoup = require('mediasoup');
 const prom = require('prom-client');
 
 const Logger = require('./Logger');
-
 const logger = new Logger('prom');
+
 const resolver = new Resolver();
 const workers = new Map();
 
@@ -33,12 +33,11 @@ module.exports = async function(rooms, peers, config)
 				if (Object.prototype.hasOwnProperty.call(metadata, key))
 				{
 					const value = metadata[key];
-					const name = key.split(/(?=[A-Z])/).join('_')
-						.toLowerCase();
+					const name = key.split(/(?=[A-Z])/).join('_').toLowerCase();
 					const unit = value.unit;
 					const metricType = value.metricType;
-					let s = `${namespace}_${subsystem}_${name}`;
 
+					let s = `${namespace}_${subsystem}_${name}`;
 					if (unit)
 					{
 						s += `_${unit}`;
@@ -78,12 +77,10 @@ module.exports = async function(rooms, peers, config)
 			if (config.deidentify)
 			{
 				const a = ip.split('.');
-
 				for (let i = 0; i < a.length - 2; i++)
 				{
 					a[i] = 'xx';
 				}
-
 				return `${a.join('.')}:${port}`;
 			}
 			else if (config.numeric)
@@ -95,14 +92,12 @@ module.exports = async function(rooms, peers, config)
 				try
 				{
 					const a = await resolver.reverse(ip);
-
 					ip = a[0];
 				}
 				catch (err)
 				{
 					logger.error(`reverse DNS query failed: ${ip} ${err.code}`);
 				}
-
 				return `${ip}:${port}`;
 			}
 		};
@@ -259,7 +254,6 @@ module.exports = async function(rooms, peers, config)
 		});
 
 		const app = express();
-
 		app.get('/', async (req, res) =>
 		{
 			logger.debug(`GET ${req.originalUrl}`);
@@ -275,7 +269,6 @@ module.exports = async function(rooms, peers, config)
 			config.listen || undefined, () =>
 			{
 				const address = server.address();
-
 				logger.info(`listening ${address.address}:${address.port}`);
 			});
 	}

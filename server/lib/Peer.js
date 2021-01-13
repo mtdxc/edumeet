@@ -1,7 +1,7 @@
 const EventEmitter = require('events').EventEmitter;
 const userRoles = require('../userRoles');
-const Logger = require('./Logger');
 
+const Logger = require('./Logger');
 const logger = new Logger('Peer');
 
 class Peer extends EventEmitter
@@ -12,23 +12,18 @@ class Peer extends EventEmitter
 		super();
 
 		this._id = id;
-
 		this._roomId = roomId;
-
 		this._authId = null;
-
+		// socket.io handler
 		this._socket = socket;
 
 		this._closed = false;
-
 		this._joined = false;
-
 		this._joinedTimestamp = null;
 
 		this._inLobby = false;
 
 		this._authenticated = false;
-
 		this._authenticatedTimestamp = null;
 
 		this._roles = [ userRoles.NORMAL ];
@@ -36,21 +31,16 @@ class Peer extends EventEmitter
 		this._displayName = false;
 
 		this._picture = null;
-
 		this._email = null;
 
 		this._routerId = null;
-
 		this._rtpCapabilities = null;
 
 		this._raisedHand = false;
-
 		this._raisedHandTimestamp = null;
 
 		this._transports = new Map();
-
 		this._producers = new Map();
-
 		this._consumers = new Map();
 
 		this._handlePeer();
@@ -59,7 +49,6 @@ class Peer extends EventEmitter
 	close()
 	{
 		logger.info('close()');
-
 		this._closed = true;
 
 		// Iterate and close all mediasoup Transport associated to this Peer, so all
@@ -85,7 +74,6 @@ class Peer extends EventEmitter
 					return;
 
 				logger.debug('"disconnect" event [id:%s]', this.id);
-
 				this.close();
 			});
 		}
@@ -179,9 +167,7 @@ class Peer extends EventEmitter
 				this._authenticatedTimestamp = null;
 
 			const oldAuthenticated = this._authenticated;
-
 			this._authenticated = authenticated;
-
 			this.emit('authenticationChanged', { oldAuthenticated });
 		}
 	}
@@ -206,9 +192,7 @@ class Peer extends EventEmitter
 		if (displayName !== this._displayName)
 		{
 			const oldDisplayName = this._displayName;
-
 			this._displayName = displayName;
-
 			this.emit('displayNameChanged', { oldDisplayName });
 		}
 	}
@@ -223,9 +207,7 @@ class Peer extends EventEmitter
 		if (picture !== this._picture)
 		{
 			const oldPicture = this._picture;
-
 			this._picture = picture;
-
 			this.emit('pictureChanged', { oldPicture });
 		}
 	}
@@ -296,30 +278,24 @@ class Peer extends EventEmitter
 
 	addRole(newRole)
 	{
-		if (
-			!this._roles.some((role) => role.id === newRole.id) &&
+		if (!this.hasRole(newRole.id) &&
 			newRole.id !== userRoles.NORMAL.id // Can not add NORMAL
 		)
 		{
 			this._roles.push(newRole);
-
 			logger.info('addRole() | [newRole:"%s]"', newRole);
-
 			this.emit('gotRole', { newRole });
 		}
 	}
 
 	removeRole(oldRole)
 	{
-		if (
-			this._roles.some((role) => role.id === oldRole.id) &&
+		if (this.hasRole(oldRole.id) &&
 			oldRole.id !== userRoles.NORMAL.id // Can not remove NORMAL
 		)
 		{
 			this._roles = this._roles.filter((role) => role.id !== oldRole.id);
-
 			logger.info('removeRole() | [oldRole:"%s]"', oldRole);
-
 			this.emit('lostRole', { oldRole });
 		}
 	}

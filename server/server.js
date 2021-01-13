@@ -50,7 +50,6 @@ const logger = new Logger();
 const queue = new AwaitQueue();
 
 let statusLogger = null;
-
 if ('StatusLogger' in config)
 	statusLogger = new config.StatusLogger();
 
@@ -85,10 +84,9 @@ const tls =
 };
 
 const app = express();
-
 app.use(helmet.hsts());
-const sharedCookieParser=cookieParser();
 
+const sharedCookieParser=cookieParser();
 app.use(sharedCookieParser);
 app.use(bodyParser.json({ limit: '5mb' }));
 app.use(bodyParser.urlencoded({ limit: '5mb', extended: true }));
@@ -452,9 +450,7 @@ async function setupAuth()
 	app.get('/auth/logout', (req, res) =>
 	{
 		const { peerId } = req.session;
-
 		const peer = peers.get(peerId);
-
 		if (peer)
 		{
 			for (const role of peer.roles)
@@ -580,15 +576,12 @@ async function runHttpsServer()
 				!isPathAlreadyTaken(req.url)
 			)
 			{
-
 				ltiURL.searchParams.append('displayName', req.user.displayName);
-
 				res.redirect(ltiURL);
 			}
 			else
 			{
 				const specialChars = "<>@!^*()[]{}:;|'\"\\,~`";
-
 				for (let i = 0; i < specialChars.length; i++)
 				{
 					if (req.url.substring(1).indexOf(specialChars[i]) > -1)
@@ -597,7 +590,6 @@ async function runHttpsServer()
 						res.redirect(`${req.url}`);
 					}
 				}
-
 				return next();
 			}
 		}
@@ -623,7 +615,6 @@ async function runHttpsServer()
 
 		// http
 		const redirectListener = http.createServer(app);
-
 		if (config.listeningHost)
 			redirectListener.listen(config.listeningRedirectPort, config.listeningHost);
 		else
@@ -673,13 +664,10 @@ async function runWebSocketServer()
 	io.on('connection', (socket) =>
 	{
 		const { roomId, peerId } = socket.handshake.query;
-
 		if (!roomId || !peerId)
 		{
 			logger.warn('connection request without roomId and/or peerId');
-
 			socket.disconnect(true);
-
 			return;
 		}
 
@@ -698,7 +686,6 @@ async function runWebSocketServer()
 			if (peer && !token)
 			{ // Don't allow hijacking sessions
 				socket.disconnect(true);
-
 				return;
 			}
 			else if (token && room.verifyPeer({ id: peerId, token }))
@@ -710,13 +697,10 @@ async function runWebSocketServer()
 			}
 
 			peer = new Peer({ id: peerId, roomId, socket });
-
 			peers.set(peerId, peer);
-
 			peer.on('close', () =>
 			{
 				peers.delete(peerId);
-
 				statusLog();
 			});
 
@@ -746,18 +730,15 @@ async function runWebSocketServer()
 			}
 
 			room.handlePeer({ peer, returning });
-
 			statusLog();
 		})
-			.catch((error) =>
-			{
-				logger.error('room creation or room joining failed [error:"%o"]', error);
-
-				if (socket)
-					socket.disconnect(true);
-
-				return;
-			});
+		.catch((error) =>
+		{
+			logger.error('room creation or room joining failed [error:"%o"]', error);
+			if (socket)
+				socket.disconnect(true);
+			return;
+		});
 	});
 }
 
@@ -766,10 +747,8 @@ async function runWebSocketServer()
  */
 async function runMediasoupWorkers()
 {
-	const { numWorkers } = config.mediasoup;
-
+	const numWorkers = config.mediasoup.numWorkers;
 	logger.info('running %d mediasoup Workers...', numWorkers);
-
 	for (let i = 0; i < numWorkers; ++i)
 	{
 		const worker = await mediasoup.createWorker(
@@ -782,9 +761,7 @@ async function runMediasoupWorkers()
 
 		worker.on('died', () =>
 		{
-			logger.error(
-				'mediasoup Worker died, exiting  in 2 seconds... [pid:%d]', worker.pid);
-
+			logger.error('mediasoup Worker died, exiting in 2 seconds... [pid:%d]', worker.pid);
 			setTimeout(() => process.exit(1), 2000);
 		});
 
@@ -798,7 +775,6 @@ async function runMediasoupWorkers()
 async function getOrCreateRoom({ roomId })
 {
 	let room = rooms.get(roomId);
-
 	// If the Room does not exist create a new one.
 	if (!room)
 	{
@@ -809,13 +785,11 @@ async function getOrCreateRoom({ roomId })
 		room = await Room.create({ mediasoupWorkers, roomId, peers });
 
 		rooms.set(roomId, room);
-
 		statusLog();
 
 		room.on('close', () =>
 		{
 			rooms.delete(roomId);
-
 			statusLog();
 		});
 	}

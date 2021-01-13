@@ -26,7 +26,6 @@ class Interactive
 	constructor(socket)
 	{
 		this._socket = socket;
-
 		this._isTerminalOpen = false;
 	}
 
@@ -45,7 +44,6 @@ class Interactive
 				return;
 
 			this.log('\nexiting...');
-
 			this._socket.end();
 		});
 
@@ -90,7 +88,6 @@ class Interactive
 						this.log('- t,  terminal                : open Node REPL Terminal');
 						this.log('');
 						readStdin();
-
 						break;
 					}
 
@@ -98,24 +95,19 @@ class Interactive
 					case 'usage':
 					{
 						let usage = await pidusage(process.pid);
-
 						this.log(`Node.js process [pid:${process.pid}]:\n${JSON.stringify(usage, null, '  ')}`);
 
 						for (const worker of workers.values())
 						{
 							usage = await pidusage(worker.pid);
-
 							this.log(`mediasoup-worker process [pid:${worker.pid}]:\n${JSON.stringify(usage, null, '  ')}`);
 						}
-
 						break;
 					}
-
 					case 'logLevel':
 					{
 						const level = params[0];
 						const promises = [];
-
 						for (const worker of workers.values())
 						{
 							promises.push(worker.updateSettings({ logLevel: level }));
@@ -124,14 +116,12 @@ class Interactive
 						try
 						{
 							await Promise.all(promises);
-
 							this.log('done');
 						}
 						catch (error)
 						{
 							this.error(String(error));
 						}
-
 						break;
 					}
 
@@ -139,7 +129,6 @@ class Interactive
 					{
 						const tags = params;
 						const promises = [];
-
 						for (const worker of workers.values())
 						{
 							promises.push(worker.updateSettings({ logTags: tags }));
@@ -148,21 +137,18 @@ class Interactive
 						try
 						{
 							await Promise.all(promises);
-
 							this.log('done');
 						}
 						catch (error)
 						{
 							this.error(String(error));
 						}
-
 						break;
 					}
 
 					case 'stats':
 					{
 						this.log(`rooms:${global.rooms.size}\npeers:${global.peers.size}`);
-
 						break;
 					}
 
@@ -173,7 +159,6 @@ class Interactive
 							try
 							{
 								const dump = await room.dump();
-
 								this.log(`room.dump():\n${JSON.stringify(dump, null, '  ')}`);
 							}
 							catch (error)
@@ -181,7 +166,6 @@ class Interactive
 								this.error(`room.dump() failed: ${error}`);
 							}
 						}
-
 						break;
 					}
 
@@ -192,7 +176,6 @@ class Interactive
 							try
 							{
 								const dump = await peer.peerInfo;
-
 								this.log(`peer.peerInfo():\n${JSON.stringify(dump, null, '  ')}`);
 							}
 							catch (error)
@@ -200,7 +183,6 @@ class Interactive
 								this.error(`peer.peerInfo() failed: ${error}`);
 							}
 						}
-
 						break;
 					}
 
@@ -212,7 +194,6 @@ class Interactive
 							try
 							{
 								const dump = await worker.dump();
-
 								this.log(`worker.dump():\n${JSON.stringify(dump, null, '  ')}`);
 							}
 							catch (error)
@@ -233,21 +214,18 @@ class Interactive
 						if (!router)
 						{
 							this.error('Router not found');
-
 							break;
 						}
 
 						try
 						{
 							const dump = await router.dump();
-
 							this.log(`router.dump():\n${JSON.stringify(dump, null, '  ')}`);
 						}
 						catch (error)
 						{
 							this.error(`router.dump() failed: ${error}`);
 						}
-
 						break;
 					}
 
@@ -256,25 +234,21 @@ class Interactive
 					{
 						const id = params[0] || Array.from(transports.keys()).pop();
 						const transport = transports.get(id);
-
 						if (!transport)
 						{
 							this.error('Transport not found');
-
 							break;
 						}
 
 						try
 						{
 							const dump = await transport.dump();
-
 							this.log(`transport.dump():\n${JSON.stringify(dump, null, '  ')}`);
 						}
 						catch (error)
 						{
 							this.error(`transport.dump() failed: ${error}`);
 						}
-
 						break;
 					}
 
@@ -287,14 +261,12 @@ class Interactive
 						if (!producer)
 						{
 							this.error('Producer not found');
-
 							break;
 						}
 
 						try
 						{
 							const dump = await producer.dump();
-
 							this.log(`producer.dump():\n${JSON.stringify(dump, null, '  ')}`);
 						}
 						catch (error)
@@ -314,21 +286,18 @@ class Interactive
 						if (!consumer)
 						{
 							this.error('Consumer not found');
-
 							break;
 						}
 
 						try
 						{
 							const dump = await consumer.dump();
-
 							this.log(`consumer.dump():\n${JSON.stringify(dump, null, '  ')}`);
 						}
 						catch (error)
 						{
 							this.error(`consumer.dump() failed: ${error}`);
 						}
-
 						break;
 					}
 
@@ -341,21 +310,18 @@ class Interactive
 						if (!dataProducer)
 						{
 							this.error('DataProducer not found');
-
 							break;
 						}
 
 						try
 						{
 							const dump = await dataProducer.dump();
-
 							this.log(`dataProducer.dump():\n${JSON.stringify(dump, null, '  ')}`);
 						}
 						catch (error)
 						{
 							this.error(`dataProducer.dump() failed: ${error}`);
 						}
-
 						break;
 					}
 
@@ -368,21 +334,18 @@ class Interactive
 						if (!dataConsumer)
 						{
 							this.error('DataConsumer not found');
-
 							break;
 						}
 
 						try
 						{
 							const dump = await dataConsumer.dump();
-
 							this.log(`dataConsumer.dump():\n${JSON.stringify(dump, null, '  ')}`);
 						}
 						catch (error)
 						{
 							this.error(`dataConsumer.dump() failed: ${error}`);
 						}
-
 						break;
 					}
 
@@ -395,21 +358,18 @@ class Interactive
 						if (!transport)
 						{
 							this.error('Transport not found');
-
 							break;
 						}
 
 						try
 						{
 							const stats = await transport.getStats();
-
 							this.log(`transport.getStats():\n${JSON.stringify(stats, null, '  ')}`);
 						}
 						catch (error)
 						{
 							this.error(`transport.getStats() failed: ${error}`);
 						}
-
 						break;
 					}
 
@@ -422,21 +382,18 @@ class Interactive
 						if (!producer)
 						{
 							this.error('Producer not found');
-
 							break;
 						}
 
 						try
 						{
 							const stats = await producer.getStats();
-
 							this.log(`producer.getStats():\n${JSON.stringify(stats, null, '  ')}`);
 						}
 						catch (error)
 						{
 							this.error(`producer.getStats() failed: ${error}`);
 						}
-
 						break;
 					}
 
@@ -449,21 +406,18 @@ class Interactive
 						if (!consumer)
 						{
 							this.error('Consumer not found');
-
 							break;
 						}
 
 						try
 						{
 							const stats = await consumer.getStats();
-
 							this.log(`consumer.getStats():\n${JSON.stringify(stats, null, '  ')}`);
 						}
 						catch (error)
 						{
 							this.error(`consumer.getStats() failed: ${error}`);
 						}
-
 						break;
 					}
 
@@ -476,21 +430,18 @@ class Interactive
 						if (!dataProducer)
 						{
 							this.error('DataProducer not found');
-
 							break;
 						}
 
 						try
 						{
 							const stats = await dataProducer.getStats();
-
 							this.log(`dataProducer.getStats():\n${JSON.stringify(stats, null, '  ')}`);
 						}
 						catch (error)
 						{
 							this.error(`dataProducer.getStats() failed: ${error}`);
 						}
-
 						break;
 					}
 
@@ -503,21 +454,18 @@ class Interactive
 						if (!dataConsumer)
 						{
 							this.error('DataConsumer not found');
-
 							break;
 						}
 
 						try
 						{
 							const stats = await dataConsumer.getStats();
-
 							this.log(`dataConsumer.getStats():\n${JSON.stringify(stats, null, '  ')}`);
 						}
 						catch (error)
 						{
 							this.error(`dataConsumer.getStats() failed: ${error}`);
 						}
-
 						break;
 					}
 
@@ -567,9 +515,7 @@ class Interactive
 		terminal.on('exit', () =>
 		{
 			this.log('\n[exiting Node REPL Terminal...]');
-
 			this._isTerminalOpen = false;
-
 			this.openCommandConsole();
 		});
 	}
@@ -682,7 +628,6 @@ module.exports = async function(rooms, peers)
 		const server = net.createServer((socket) =>
 		{
 			const interactive = new Interactive(socket);
-
 			interactive.openCommandConsole();
 		});
 
