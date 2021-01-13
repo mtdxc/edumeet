@@ -1,0 +1,3 @@
+[submodule "mediasoup"]
+	path = mediasoup
+	url = git@github.com:mtdxc/mediasoup.git

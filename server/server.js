@@ -758,7 +758,7 @@ async function runMediasoupWorkers()
 				rtcMinPort : config.mediasoup.worker.rtcMinPort,
 				rtcMaxPort : config.mediasoup.worker.rtcMaxPort
 			});
-
+		worker.sharePort({stunServer:"120.26.218.183", ip: config.mediasoup.webRtcTransport.listenIps[0].ip});
 		worker.on('died', () =>
 		{
 			logger.error('mediasoup Worker died, exiting in 2 seconds... [pid:%d]', worker.pid);
