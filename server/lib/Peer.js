@@ -358,16 +358,20 @@ class Peer extends EventEmitter
 
 	get peerInfo()
 	{
-		const peerInfo =
+		let peerInfo =
 		{
 			id                  : this.id,
 			displayName         : this.displayName,
 			picture             : this.picture,
 			roles               : this.roles.map((role) => role.id),
 			raisedHand          : this.raisedHand,
-			raisedHandTimestamp : this.raisedHandTimestamp
+			raisedHandTimestamp : this.raisedHandTimestamp,
+			producers : []
 		};
-
+		for (const produce of this.producers.values()){
+			peerInfo.producers.push({id:produce.id, kind: produce.kind});
+		}
+		// console.log(peerInfo);
 		return peerInfo;
 	}
 }

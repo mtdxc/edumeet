@@ -29,8 +29,7 @@ const LTIStrategy = require('passport-lti');
 const imsLti = require('ims-lti');
 const SAMLStrategy = require('passport-saml').Strategy;
 const LocalStrategy = require('passport-local').Strategy;
-const redis = require('redis');
-const redisClient = redis.createClient(config.redisOptions);
+const {pubs} = require('./lib/redisStore');
 const { Issuer, Strategy } = require('openid-client');
 const expressSession = require('express-session');
 const RedisStore = require('connect-redis')(expressSession);
@@ -96,7 +95,7 @@ const session = expressSession({
 	name              : config.cookieName,
 	resave            : true,
 	saveUninitialized : true,
-	store             : new RedisStore({ client: redisClient }),
+	store             : new RedisStore({ client: pubs }),
 	cookie            : {
 		secure   : true,
 		httpOnly : true,
@@ -104,8 +103,7 @@ const session = expressSession({
 	}
 });
 
-if (config.trustProxy)
-{
+if (config.trustProxy) {
 	app.set('trust proxy', config.trustProxy);
 }
 
@@ -132,6 +130,16 @@ async function run()
 {
 	try
 	{
+		process.on('SIGINT', function () {
+			console.log('Exit now!');
+			for (const room of rooms.values()){
+				room.close();
+			}
+			for (const worker of mediasoupWorkers){
+				worker.close();
+			}
+			setTimeout(() => process.exit(), 2000);
+		});
 		// Open the interactive server.
 		await interactiveServer(rooms, peers);
 
@@ -200,7 +208,7 @@ function setupLTI(ltiConfig)
 {
 
 	// Add redis nonce store
-	ltiConfig.nonceStore = new imsLti.Stores.RedisStore(ltiConfig.consumerKey, redisClient);
+	ltiConfig.nonceStore = new imsLti.Stores.RedisStore(ltiConfig.consumerKey, pubs);
 	ltiConfig.passReqToCallback = true;
 
 	const ltiStrategy = new LTIStrategy(
@@ -758,9 +766,26 @@ async function runMediasoupWorkers()
 				rtcMinPort : config.mediasoup.worker.rtcMinPort,
 				rtcMaxPort : config.mediasoup.worker.rtcMaxPort
 			});
-		worker.sharePort({stunServer:"120.26.218.183", ip: config.mediasoup.webRtcTransport.listenIps[0].ip});
+		await worker.sharePort({
+			stun_server: {ip:"120.26.218.183", port:3478}, 
+			listenIp: config.mediasoup.webRtcTransport.listenIps[0]
+		});
+		const setting = worker.sharePortSetting;
+		var obj= {
+			id : setting.id,
+			listenIp: setting.listenIp.ip,
+			announcedIp: setting.listenIp.announcedIp,
+			candidates: setting.udpCandidates,
+		};
+		logger.info(setting);
+		pubs.hmset("worker." + setting.id, obj);
+		worker.observer.on('close', ()=>{
+			logger.info("worker close", setting.id);
+			pubs.del("worker." + setting.id);
+		});
 		worker.on('died', () =>
 		{
+			logger.info("worker die", setting.id);
 			logger.error('mediasoup Worker died, exiting in 2 seconds... [pid:%d]', worker.pid);
 			setTimeout(() => process.exit(1), 2000);
 		});

@@ -3,11 +3,12 @@ const AwaitQueue = require('awaitqueue');
 const axios = require('axios');
 const Logger = require('./Logger');
 const Lobby = require('./Lobby');
+const Peer = require('./Peer');
 const { SocketTimeoutError } = require('./errors');
 const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
 const userRoles = require('../userRoles');
-
+const {pubs, subs} = require('./redisStore');
 const {
 	BYPASS_ROOM_LOCK,
 	BYPASS_LOBBY
@@ -199,6 +200,7 @@ class Room extends EventEmitter
 		{
 			const router = await worker.createRouter({ mediaCodecs });
 			mediasoupRouters.set(router.id, router);
+			break;
 		}
 
 		const firstRouter = mediasoupRouters.get(Room.getLeastLoadedRouter(
@@ -272,11 +274,156 @@ class Room extends EventEmitter
 		// Array of mediasoup Router instances.
 		this._mediasoupRouters = mediasoupRouters;
 
+		if(mediasoupRouters.size == 1)
+			this._router = mediasoupRouters.values().next().value;
+
 		// mediasoup AudioLevelObserver.
 		this._audioLevelObserver = audioLevelObserver;
 
 		this._handleLobby();
 		this._handleAudioLevelObserver();
+
+		this._channel = "room:" + this._roomId;
+		let room = this;
+		pubs.hgetall(this._channel, function(err, resp){
+			if (err || !resp) return ;
+			for(let peerId in resp){
+				logger.info("got peer", peerId, resp[peerId]);
+				const peerInfo = JSON.parse(resp[peerId]);
+				let peer = room.newPublicPeer(peerId, peerInfo);
+				// 获取peer下的producerId列表
+				let key = room.peerProducerKey(peerId);
+				pubs.smembers(key, function(err, resp){
+					if (err || !resp) return ;
+					logger.info(key, "got producers", resp);
+					for(let i = 0; i< resp.length; i++){
+						// 获取procuder详细信息
+						pubs.hgetall(room.producerKey(resp[i]), function(err, resp){
+							if (err || !resp) return ;
+							room.newPublicProducer(peer, resp);
+						});
+					}
+				});
+			}
+		});
+
+		subs.subscribe(this._channel, (msg)=>{
+			if(msg.from == this._uuid)
+				return ;
+			let peer = null;
+			logger.info(this._channel, "redis msg:", msg);
+			switch(msg.cmd){
+			case 'peer.add':
+				const peerInfo = JSON.parse(msg.info);
+				this.newPublicPeer(msg.id, peerInfo);
+				break;
+			case 'peer.del':
+				peer = this._peers[msg.id];
+				if(peer && !peer.socket){
+					logger.info(this._roomId, "delPublicPeer", peer.id);
+					for (const otherPeer of this.getJoinedPeers()){
+						this._notification(
+							otherPeer.socket,
+							'peerClosed',
+							{ peerId: peer.id }
+						);	
+					}
+					if (!this._peers[peer.id].closed)
+						this._peers[peer.id].close();
+					delete this._peers[peer.id];
+				}
+				break;
+			case 'producer.add':
+				peer = this._peers[msg.peerId];
+				if(peer && !peer.socket){
+					this.newPublicProducer(peer, msg);
+				}
+				break;
+			case 'producer.del':
+				peer = this._peers[msg.peerId];
+				if(peer && !peer.socket){
+					logger.info(this._roomId, "delPublicProducer", msg.id, "for Peer", peer.id);
+					let producer = peer.getProducer(msg.id);
+					if(producer){
+						producer.close();
+						peer.removeProducer(msg.id);
+					}
+				}
+				break;
+			}
+		});
+	}
+
+	peerProducerKey(peerId){
+		// redis key for peer procducer
+		return "peerProducts." + this._roomId + "." + peerId;
+	}
+	producerKey(prodId){
+		// redis key for producer
+		return "room." + this._roomId + "." + prodId;
+	}
+
+	newPublicPeer(peerId, peerInfo){
+		let peer = new Peer({ id: peerId, roomId: this._roomId });
+		// Store client data into the Peer data object.
+		peer.displayName = peerInfo.displayName;
+		peer.picture = peerInfo.picture;
+		peer.joined = true;
+		peer.routerId = this._router.id;
+		// 通知用户上线
+		for (const otherPeer of this.getJoinedPeers()){
+			this._notification(
+				otherPeer.socket,
+				'newPeer',
+				peer.peerInfo
+			);	
+		}
+		logger.info(this._roomId, "got new PublicPeer", peerInfo);
+		this._peers[peerId] = peer;
+		return peer;
+	}
+
+	async newPublicProducer(peer, msg){
+		// msg.id, msg.kind, JSON.parse(msg.rtpParameters);
+		const { id, kind, source } = msg;
+		logger.info(this._roomId, "got new PublicProducer", id, "for peer", peer.id);
+		const rtpParameters = JSON.parse(msg.rtpParameters);
+		// Add peerId into appData to later get the associated Peer during
+		// the 'loudest' event of the audioLevelObserver.
+		let appData = { source, peerId: peer.id };
+		let producer = await this._router.sharedTransport.produce({ id, kind, rtpParameters, appData });
+		producer.on('@tuple.needed', ()=>{
+			logger.info("procuder", producer.id, "tuple.needed");
+			// 判断producer还是否存在
+			pubs.hget(this.producerKey(producer.id), "worker", function(err, reply){
+				if(reply){
+					pubs.hget("worker." + reply, "candidates", function(err, resp){
+						if(resp)
+							producer.addTuples(resp.split(','));
+					})		
+				}
+				else{
+					logger.info("remove PublicProcuder", producer.id, "for no candidate");
+					producer.close();
+					peer.removeProducer(producer.id);
+				}
+			});
+		});
+		producer.on('@tuple.change', (tuple)=>{
+			logger.info("procuder", producer.id, "tuple.changed", tuple);
+		});
+		peer.addProducer(producer.id, producer);
+
+		// 其他人自动订阅这流
+		for (const otherPeer of this.getJoinedPeers(peer))
+		{
+			this._createConsumer(
+				{
+					consumerPeer : otherPeer,
+					producerPeer : peer,
+					producer
+				});
+		}
 	}
 
 	isLocked()
@@ -287,6 +434,8 @@ class Room extends EventEmitter
 	close()
 	{
 		logger.debug('close()');
+
+		subs.unsubscribe(this._channel);
 
 		this._closed = true;
 
@@ -729,8 +878,18 @@ class Room extends EventEmitter
 			return;
 
 		// If the Peer was joined, notify all Peers.
-		if (peer.joined)
+		if (peer.joined){
 			this._notification(peer.socket, 'peerClosed', { peerId: peer.id }, true);
+			logger.info("delete peer", peer.id);
+			var msg = {
+				cmd : "peer.del",
+				id: peer.id,
+				from: this._uuid,
+			}
+			pubs.hdel(this._channel, peer.id);
+			logger.info("redis", msg.cmd, msg);
+			pubs.publish(this._channel, JSON.stringify(msg));
+		}
 
 		// Remove from lastN
 		this._lastN = this._lastN.filter((id) => id !== peer.id);
@@ -793,7 +952,7 @@ class Room extends EventEmitter
 				// Tell the new Peer about already joined Peers.
 				// And also create Consumers for existing Producers.
 
-				const joinedPeers = this.getJoinedPeers(peer);
+				const joinedPeers = this.getJoinedPeers2(peer);
 				const peerInfos = joinedPeers
 					.map((joinedPeer) => (joinedPeer.peerInfo));
 
@@ -821,7 +980,17 @@ class Room extends EventEmitter
 				// Mark the new Peer as joined.
 				peer.joined = true;
 
-				// 订阅所有用户音视频... 这应该让客户端来做
+				const peerinfo = JSON.stringify(peer.peerInfo);
+				var msg = {
+					cmd : "peer.add",
+					id : peer.id,
+					info: peerinfo,
+					from: this._uuid,
+				}
+				pubs.hset(this._channel, peer.id, peerinfo);
+				pubs.publish(this._channel, JSON.stringify(msg));
+
+				// 订阅所有用户音视频... 这应该让客户端来请求
 				for (const joinedPeer of joinedPeers)
 				{
 					// Create Consumers for existing Producers.
@@ -839,6 +1008,8 @@ class Room extends EventEmitter
 				// Notify the new Peer to all other Peers.
 				for (const otherPeer of joinedPeers)
 				{
+					if(!otherPeer.socket)
+						continue;
 					this._notification(
 						otherPeer.socket,
 						'newPeer',
@@ -966,8 +1137,9 @@ class Room extends EventEmitter
 				// Add peerId into appData to later get the associated Peer during
 				// the 'loudest' event of the audioLevelObserver.
 				appData = { ...appData, peerId: peer.id };
+				logger.info("produce with ", appData);
 				const producer =
-					await transport.produce({ kind, rtpParameters, appData });
+					await transport.produce({ kind, rtpParameters, appData, keyFrameRequestDelay:5000 });
 
 				const pipeRouters = this._getRoutersToPipeTo(peer.routerId);
 				for (const [ routerId, destinationRouter ] of this._mediasoupRouters)
@@ -983,6 +1155,44 @@ class Room extends EventEmitter
 
 				// Store the Producer into the Peer data Object.
 				peer.addProducer(producer.id, producer);
+
+				logger.info(this._roomId, "addProducer", producer.id, "for Peer", peer.id);
+				var obj = {
+					peerId: peer.id,
+					id : producer.id,
+					kind: producer.kind,
+					source: appData.source,
+					worker: router.sharedTransport.id,
+					rtpParameters : JSON.stringify(producer.consumableRtpParameters),
+				};
+				pubs.hmset(this.producerKey(producer.id), obj);
+				pubs.sadd(this.peerProducerKey(peer.id), producer.id);
+
+				var msg = {
+					cmd : "producer.add",
+					from: this._uuid,
+					... obj
+				}
+				pubs.publish(this._channel, JSON.stringify(msg));
+
+				producer.observer.on('close', ()=>{
+					logger.info(this._roomId, "delProducer", producer.id, "for Peer", peer.id);
+					var obj = {
+						peerId: peer.id,
+						id : producer.id,
+						kind: producer.kind,
+					};
+					pubs.del(this.producerKey(producer.id));
+					pubs.srem(this.peerProducerKey(peer.id), producer.id);
+	
+					var msg = {
+						cmd : "producer.del",
+						from: this._uuid,
+						... obj
+					}
+					pubs.publish(this._channel, JSON.stringify(msg));
+					logger.info("redis", msg.cmd, obj);
+				});
 
 				// Set Producer events.
 				producer.on('score', (score) =>
@@ -1759,6 +1969,11 @@ class Room extends EventEmitter
 	getJoinedPeers(excludePeer = undefined)
 	{
 		return Object.values(this._peers)
+			.filter((peer) => peer.joined && peer !== excludePeer && peer.socket);
+	}
+	getJoinedPeers2(excludePeer = undefined)
+	{
+		return Object.values(this._peers)
 			.filter((peer) => peer.joined && peer !== excludePeer);
 	}
 
@@ -1906,6 +2121,8 @@ class Room extends EventEmitter
 
 	async _getRouterId()
 	{
+		if(this._router)
+			return this._router.id;
 		const routerId = Room.getLeastLoadedRouter(
 			this._mediasoupWorkers, this._allPeers, this._mediasoupRouters);
 		await this._pipeProducersToRouter(routerId);
